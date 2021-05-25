@@ -85,6 +85,7 @@ public:
   void setInstantVelocity(int32_t steps_per_sec) {
 	uint32 period = 1000000;
 	m_isr_velocity = steps_per_sec;
+	steps_per_sec = abs(steps_per_sec);
 	if (steps_per_sec != 0) period = 1000000 / steps_per_sec;
 
 	setTimerPeriod(period, steps_per_sec != 0);
