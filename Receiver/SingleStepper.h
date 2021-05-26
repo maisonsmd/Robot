@@ -7,6 +7,8 @@
 #define STEPPER_PULSE_DURATION 5 // us
 #endif
 
+#define STEPPER_INVERT_PUL
+
 enum class VProfile {
     CONSTANT,
     CHANGING
@@ -200,7 +202,11 @@ public:
             else
                 dir_pin.high();
             current_step++;
+#ifdef STEPPER_INVERT_PUL
+            pul_pin.low();
+#else
             pul_pin.high();
+#endif
             full_stepped = false;
         }
         else if (temp_target_step < current_step) {
@@ -209,7 +215,11 @@ public:
             else
                 dir_pin.low();
             current_step--;
+#ifdef STEPPER_INVERT_PUL
+            pul_pin.low();
+#else
             pul_pin.high();
+#endif
             full_stepped = false;
         }
     }
@@ -252,7 +262,11 @@ public:
             && (current_us >= step_trigger_us + STEPPER_PULSE_DURATION)) {
             // end the step
             full_stepped = true;
+#ifdef STEPPER_INVERT_PUL
+            pul_pin.high();
+#else
             pul_pin.low();
+#endif
             last_step_finish_us = current_us;
         }
         isr_firing = false;
