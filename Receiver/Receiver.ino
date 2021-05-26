@@ -1,6 +1,15 @@
-constexpr float ACCEL = 1000;			  // steps/s^2, gia toc
-constexpr float MAX_V = 10000;			  // steps/s, van toc toi da
-constexpr float MIN_ROTATE_RATIO = 0.5;	  // 0.0 -> 1.0, ti le banh cham / banh nhanh khi vua tien vua queo
+constexpr float ACCEL = 10000;			  // steps/s^2, gia toc
+constexpr float MICRO_STEP = 1000;    // vi buoc
+constexpr float MAX_RPM = 700;        // max RPM
+constexpr float ROTATE_ONLY_RPM = 100; // toc do quay tai cho
+constexpr float MIN_ROTATE_RATIO = 0.5;    // 0.0 -> 1.0, ti le banh cham / banh nhanh khi vua tien vua queo
+
+constexpr float MAX_V = MAX_RPM * MICRO_STEP / 60;			  // steps/s, van toc toi da
+constexpr float ROTATE_ONLY_V = ROTATE_ONLY_RPM * MICRO_STEP / 60;
+
+// dao chieu dong co?
+constexpr bool INVERT_LEFT_DIR = true;
+constexpr bool INVERT_RIGHT_DIR = false;
 
 #include "LedFlasher.h"
 #include "Button.h"
@@ -110,8 +119,8 @@ void setup() {
 
     motor_init_isr(stepper_left);
     motor_init_isr(stepper_right);
-    stepper_left.init();
-    stepper_right.init();
+    stepper_left.init(INVERT_LEFT_DIR);
+    stepper_right.init(INVERT_RIGHT_DIR);
 
     Timer2.pause();
     Timer2.setPeriod(15);
@@ -127,7 +136,6 @@ void setup() {
     stepper_right.set_accel(ACCEL);
 }
 
-double vv = 0;
 void loop() {
     const uint32_t current_us = micros();
     //iwdg_feed();
@@ -137,9 +145,10 @@ void loop() {
     stepper_left.update(current_us);
     stepper_right.update(current_us);
 
-    //stepper_left.setVelocity(left_velocity);
-    //stepper_right.setVelocity(right_velocity);
-
+#ifndef TEST_COMMAND
+    stepper_left.set_peak_velocity(left_velocity);
+    stepper_right.set_peak_velocity(right_velocity);
+#else
     if (Serial.available()) {
         char c = Serial.read();
         auto v = Serial.parseFloat();
@@ -155,7 +164,6 @@ void loop() {
             stepper_right.set_accel(v);
         }
         if (c == 'v') {
-            vv = v;
             stepper_left.set_peak_velocity(v);
             stepper_right.set_peak_velocity(v);
         }
@@ -168,7 +176,7 @@ void loop() {
         //stepper_left.set_peak_velocity(vv + random(-10, 10));
     }
     return;
-
+#endif
     // check connection
     if (millis() > 2000UL
         && millis() < last_response_ms + 2000UL) {
@@ -206,13 +214,21 @@ void loop() {
         max_velocity = float(max_v_percent) / 100.0f * MAX_V;
         const auto px = float(joystick_x) / 100.0f;
         const auto py = float(joystick_y) / 100.0f;
+
+        if (sw_emergency) {
+          max_velocity = 0;
+          stepper_left.fast_stop();
+          stepper_right.fast_stop();
+        }
+        
         // inplace rotate
         if (joystick_y == 0) {
             if (control_style == ControlStyle::NONE
                 || control_style == ControlStyle::ROTATE_ONLY) {
                 control_style = ControlStyle::ROTATE_ONLY;
-                left_velocity = px * max_velocity;
-                right_velocity = -px * max_velocity;
+                
+                left_velocity = px * ROTATE_ONLY_V;
+                right_velocity = -px * ROTATE_ONLY_V;
             }
             else {
                 left_velocity = 0;
@@ -250,12 +266,12 @@ void loop() {
 
             lora.write(resp);
 
-            /* DEBUGF("Em:%d En:%d R1:%d R2:%d x%d y%d max %d",
+            DEBUGF("Em:%d En:%d R1:%d R2:%d x%d y%d max %d",
                sw_emergency,
                sw_enable,
                sw_relay_1,
                sw_relay_2,
-               joystick_x, joystick_y, max_v_percent);*/
+               joystick_x, joystick_y, max_v_percent);
         }
     }
 

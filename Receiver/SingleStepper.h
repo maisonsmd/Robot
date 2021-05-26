@@ -131,6 +131,9 @@ public:
     }
 
     void fast_stop() {
+      set_instant_velocity(0);
+      current_velocity = 0;
+      current_step = temp_target_step;
     }
 
     void set_accel(double a) {
