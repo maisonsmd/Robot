@@ -9,52 +9,11 @@
 
 #define STEPPER_INVERT_PUL
 
-enum class VProfile {
-    CONSTANT,
-    CHANGING
-};
-
 double map_double(double x, double in_min, double in_max, double out_min, double out_max) {
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
 class single_stepper {
-public:
-    struct profile_segment {
-        // 0: start, 1: end
-        double t0, t1;
-        double v0, v1;
-        int32 p0, p1;
-        void print() {
-            DEBUGF("t: %4.1f %4.1f v: %4.0f %4.0f p: %5ld %5ld", t0, t1, v0, v1, p0, p1);
-        }
-    };
-    profile_segment segment;
-    VProfile profile{ VProfile::CONSTANT };
-
-    double profile_seg_pos(double time) {
-        auto delta_t = time - segment.t0;
-        auto temp_accel = segment.v1 > segment.v0 ? accel : -accel;
-
-        switch (profile)
-        {
-        case VProfile::CONSTANT:
-            return segment.p0 + segment.v0 * delta_t;
-        case VProfile::CHANGING:
-            return segment.p0 + segment.v0 * delta_t + 0.5 * temp_accel * delta_t * delta_t;
-        }
-        return 0;
-    }
-    double profile_seg_vel(double time) {
-        auto delta_t = time - segment.t0;
-        auto temp_accel = segment.v1 > segment.v0 ? accel : -accel;
-
-        if (profile == VProfile::CONSTANT)
-            return target_velocity;
-
-        return segment.v0 + temp_accel * delta_t;
-    }
-
 public:
     single_stepper(const fast_io &  pul, const fast_io &  dir, HardwareTimer * timer)
         : pul_pin(pul), dir_pin(dir), timer_on(timer) {
@@ -66,20 +25,8 @@ public:
         dir_pin.set_mode(OUTPUT);
     }
 
-    void interpolate(double time) {
-        if (profile == VProfile::CHANGING)
-            if (time >= segment.t1) {
-                profile = VProfile::CONSTANT;
-                segment.t0 = time;
-                segment.v0 = target_velocity;
-                segment.p0 = current_step;
-            }
-        current_velocity = profile_seg_vel(time);
-        temp_target_step = profile_seg_pos(time);
-    }
-
     void update(const uint32 current_us, bool external_timing = false) {
-        constexpr int32 interval_us = 5000;
+        constexpr int32 interval_us = 1000;
         //const uint32_t ms = millis();
 
         SCHEDULER_GUARD(current_us, last_interpolate_us);
@@ -114,16 +61,18 @@ public:
         temp_target_step = temp_target_step_double;
 
         // refine tune velocity
-        double practical_d = abs(temp_target_step - current_step);
+        double practical_v = abs(temp_target_step - current_step);
         constexpr double increment_factor = 1000000.0 / interval_us;
 
         double main_v = current_velocity;
-        double theory_d = main_v / increment_factor;
-        if (practical_d > theory_d
-            && practical_d > 0
-            && theory_d > 0) {
-            double r = practical_d / theory_d;
-            r = constrain(r, 1, 2);
+        double theory_v = (main_v / increment_factor);
+        theory_v = abs(theory_v);
+
+        if (practical_v > theory_v
+            && practical_v > 0
+            && theory_v > 0) {
+            double r = practical_v / theory_v;
+            r = constrain(r, 1, 1.2);
             main_v *= r;
         }
 
@@ -131,9 +80,9 @@ public:
     }
 
     void fast_stop() {
-      set_instant_velocity(0);
-      current_velocity = 0;
-      current_step = temp_target_step;
+        set_instant_velocity(0);
+        current_velocity = 0;
+        current_step = temp_target_step;
     }
 
     void set_accel(double a) {

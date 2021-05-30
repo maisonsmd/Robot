@@ -1,10 +1,10 @@
-constexpr float ACCEL = 10000;			  // steps/s^2, gia toc
-constexpr float MICRO_STEP = 1000;    // vi buoc
-constexpr float MAX_RPM = 700;        // max RPM
-constexpr float ROTATE_ONLY_RPM = 100; // toc do quay tai cho
-constexpr float MIN_ROTATE_RATIO = 0.5;    // 0.0 -> 1.0, ti le banh cham / banh nhanh khi vua tien vua queo
+constexpr float ACCEL = 10000;          // steps/s^2, gia toc
+constexpr float MICRO_STEP = 1000;      // vi buoc
+constexpr float MAX_RPM = 700;          // max RPM
+constexpr float ROTATE_ONLY_RPM = 100;  // toc do quay tai cho
+constexpr float MIN_ROTATE_RATIO = 0.5; // 0.0 -> 1.0, ti le banh cham / banh nhanh khi vua tien vua queo
 
-constexpr float MAX_V = MAX_RPM * MICRO_STEP / 60;			  // steps/s, van toc toi da
+constexpr float MAX_V = MAX_RPM * MICRO_STEP / 60;// steps/s, van toc toi da
 constexpr float ROTATE_ONLY_V = ROTATE_ONLY_RPM * MICRO_STEP / 60;
 
 // dao chieu dong co?
@@ -123,7 +123,7 @@ void setup() {
     stepper_right.init(INVERT_RIGHT_DIR);
 
     Timer2.pause();
-    Timer2.setPeriod(15);
+    Timer2.setPeriod(20);
     Timer2.attachInterrupt(0, []() {
         const uint32_t current_us = micros();
         stepper_left.isr_off(current_us);
@@ -136,6 +136,8 @@ void setup() {
     stepper_right.set_accel(ACCEL);
 }
 
+// #define TEST_COMMAND
+
 void loop() {
     const uint32_t current_us = micros();
     //iwdg_feed();
@@ -144,6 +146,9 @@ void loop() {
 
     stepper_left.update(current_us);
     stepper_right.update(current_us);
+
+    stepper_left.isr_off(current_us);
+    stepper_right.isr_off(current_us);
 
 #ifndef TEST_COMMAND
     stepper_left.set_peak_velocity(left_velocity);
@@ -172,9 +177,6 @@ void loop() {
         INFOF("v %5.0f  %ld/%ld", stepper_left.current_velocity, stepper_left.current_step, stepper_left.temp_target_step);
     }
 
-    DO_EVERY(100) {
-        //stepper_left.set_peak_velocity(vv + random(-10, 10));
-    }
     return;
 #endif
     // check connection
