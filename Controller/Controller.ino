@@ -41,7 +41,7 @@ Button sw_enable(LOW);
 Button sw_relay_1(LOW);
 Button sw_relay_2(LOW);
 
-Joystick joystick(4095, 0.1f, PA5, PA4);
+Joystick joystick(4095, 0.1f, PA5, PA1);
 Joystick max_v(4095, 0.0f, PA3, 255);
 
 UartData control_packet;
@@ -53,7 +53,16 @@ bool is_low_battery{ false };
 float battery_voltage{ 8.4f };
 bool is_enable_allowed{ false };
 
+enum class RelayButtonAllowStatus {
+  UNKNOWN,
+  WAIT_RELEASE,
+  ALLOWED
+};
+
+RelayButtonAllowStatus relay_btn_allow_status { RelayButtonAllowStatus::UNKNOWN };
+
 int16_t _x{ 0 }, _y{ 0 }, _max_v{ 0 };
+
 void setup() {
     Serial.begin(115200);
     Serial.setTimeout(3);
@@ -75,7 +84,7 @@ void setup() {
 
     led_ready.setLoop(true);
     led_ready.setRunning(true);
-    led_ready.setPattern(PLED_ERROR);
+    led_ready.off();
 
     led_connection.setLoop(true);
     led_connection.setRunning(true);
@@ -85,23 +94,52 @@ void setup() {
     led_system.setRunning(true);
     led_system.setPattern(PLED_SYSTEM);
 
-    const auto onBtnClicked = []() {
-        if (is_enable_allowed)
+    const auto onRelayBtnDown = []() {
+        if (!sw_relay_1.isTriggered() || !sw_relay_2.isTriggered()) {
             return;
+        }
+        
+        if (is_enable_allowed){
+            INFO("Already ALLOWED");
+            return;
+        }
 
-        if (sw_relay_1.isTriggered() && sw_relay_2.isTriggered()) {
-            if (_x == 0 && _y == 0 && _max_v < 20) {
-                INFO("ENABLE CONFIRMED!");
-                is_enable_allowed = true;
-            }
-            else {
-                INFO("x, y, max_v INVALID!");
-            }
+        if (!sw_enable.isTriggered()) {
+            INFO("ENABLE SW is not turned ON");
+            return;
+        }
+            
+        if (_x == 0 && _y == 0 && _max_v < 20) {
+            INFO("ENABLE CONFIRMED!");
+            is_enable_allowed = true;
+            relay_btn_allow_status = RelayButtonAllowStatus::WAIT_RELEASE;
+        }
+        else {
+            INFO("x, y, max_v INVALID!");
         }
     };
 
-    sw_relay_1.onButtonPressed = onBtnClicked;
-    sw_relay_2.onButtonPressed = onBtnClicked;
+    const auto onRelayBtnUp = []() {
+       if (!sw_relay_1.isTriggered() 
+           && !sw_relay_2.isTriggered() 
+           && relay_btn_allow_status == RelayButtonAllowStatus::WAIT_RELEASE) {
+            DEBUG("RELAY ALLOWED!");
+            relay_btn_allow_status = RelayButtonAllowStatus::ALLOWED;
+       }
+    };
+
+    sw_relay_1.onSensorTriggered = onRelayBtnDown;
+    sw_relay_2.onSensorTriggered = onRelayBtnDown;
+    sw_relay_1.onSensorReleased = onRelayBtnUp;
+    sw_relay_2.onSensorReleased = onRelayBtnUp;
+
+    sw_enable.onSensorTriggered = []() {
+        if (!is_low_battery)
+            led_power.off();
+        if (!is_enable_allowed) {
+            INFO("ENABLED NOT ALLOWED");
+        }
+    };
     // 600ms watchdog
     //iwdg_init(iwdg_prescaler::IWDG_PRE_256, 100);
 }
@@ -148,12 +186,16 @@ void loop() {
     if (sw_enable.isTriggered()) {
         if (!is_low_battery)
             led_power.off();
+            
         if (is_enable_allowed)
             led_ready.on();
+        else
+            led_ready.setPattern(PLED_ERROR);
     }
     else {
         if (!is_low_battery)
             led_power.on();
+            
         led_ready.off();
     }
 
@@ -170,17 +212,44 @@ void loop() {
         has_connection = false;
         led_connection.setPattern(PLED_DISCONNECTED);
     }
+    
+     DO_EVERY(1000) {
+       DEBUGF("Em:%d En:%d R1:%d R2:%d x%d y%d max %d",
+         !sw_emergency.isTriggered(),
+         sw_enable.isTriggered(),
+         sw_relay_1.isTriggered(),
+         sw_relay_2.isTriggered(),
+         _x, _y, _max_v);
+     } 
 
-    if (!is_enable_allowed)
-        return;
+    auto _enabled = sw_enable.isTriggered();
+    auto _relay_1 = sw_relay_1.isTriggered();
+    auto _relay_2 = sw_relay_2.isTriggered();
+    // _emergency: 0: released, 1: presed
+    auto _emergency = !sw_emergency.isTriggered();
+    
+    if (!is_enable_allowed) {
+      _x = 0;
+      _y = 0;
+      _max_v = 0;
+
+      _relay_1 = false;
+      _relay_2 = false;
+      _enabled = false;
+    }
+
+    if (relay_btn_allow_status != RelayButtonAllowStatus::ALLOWED) {
+      _relay_1 = false;
+      _relay_2 = false;
+    }
 
     control_packet.clear();
     control_packet.push(controller_id);
     control_packet.push(robot_id);
-    control_packet.push(!sw_emergency.isTriggered());
-    control_packet.push(sw_enable.isTriggered());
-    control_packet.push(sw_relay_1.isTriggered());
-    control_packet.push(sw_relay_2.isTriggered());
+    control_packet.push(_emergency);
+    control_packet.push(_enabled);
+    control_packet.push(_relay_1);
+    control_packet.push(_relay_2);
     control_packet.push(_x);
     control_packet.push(_y);
     control_packet.push(_max_v);
@@ -194,12 +263,4 @@ void loop() {
             last_response_ms = millis();
         }
     }
-    /* DO_EVERY(1000) {
-       DEBUGF("Em:%d En:%d R1:%d R2:%d x%d y%d max %d",
-         sw_emergency.isTriggered(),
-         sw_enable.isTriggered(),
-         sw_relay_1.isTriggered(),
-         sw_relay_2.isTriggered(),
-         _x, _y, _max_v);
-     }*/
 }

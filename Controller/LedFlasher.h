@@ -39,17 +39,26 @@ public:
         if (m_pointer_mutable && m_pattern && m_pattern != pattern)
             delete[] m_pattern;
 
-        m_current_index = 0;
-        m_next_ms = 0;
-
+        bool need_restart = false;
+        if (m_length != length)
+           need_restart = true;
+           
         m_pattern = pattern;
         m_length = length;
         m_pointer_mutable = is_array_mutable;
 
-        if (pattern) {
+        if (need_restart)
+            restart();
+    }
+
+    void restart() {
+        m_current_index = 0;
+        m_next_ms = 0;
+        
+        if (m_pattern) {
             if (m_pin != 255)
                 digitalWrite(m_pin, m_active_level);
-            m_next_ms = millis() + pattern[0];
+            m_next_ms = millis() + m_pattern[0];
         }
     }
 

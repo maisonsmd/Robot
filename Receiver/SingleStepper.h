@@ -4,7 +4,7 @@
 #include "Logger.h"
 
 #ifndef STEPPER_PULSE_DURATION
-#define STEPPER_PULSE_DURATION 5 // us
+#define STEPPER_PULSE_DURATION 3 // us
 #endif
 
 #define STEPPER_INVERT_PUL

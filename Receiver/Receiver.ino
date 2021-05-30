@@ -1,6 +1,6 @@
 constexpr float ACCEL = 10000;          // steps/s^2, gia toc
-constexpr float MICRO_STEP = 1000;      // vi buoc
-constexpr float MAX_RPM = 700;          // max RPM
+constexpr float MICRO_STEP = 2000;      // vi buoc
+constexpr float MAX_RPM = 600;          // max RPM
 constexpr float ROTATE_ONLY_RPM = 100;  // toc do quay tai cho
 constexpr float MIN_ROTATE_RATIO = 0.5; // 0.0 -> 1.0, ti le banh cham / banh nhanh khi vua tien vua queo
 
@@ -108,9 +108,6 @@ void setup() {
     led_system.setRunning(true);
     led_system.setPattern(PLED_SYSTEM);
 
-    // 600ms watchdog
-    //iwdg_init(iwdg_prescaler::IWDG_PRE_256, 100);
-
 #define motor_init_isr(motor) \
 		motor.timer_on->pause();\
 		motor.timer_on->attachInterrupt(0, []() {\
@@ -134,13 +131,16 @@ void setup() {
 
     stepper_left.set_accel(ACCEL);
     stepper_right.set_accel(ACCEL);
+
+    // 600ms watchdog
+    iwdg_init(iwdg_prescaler::IWDG_PRE_256, 100);
 }
 
 // #define TEST_COMMAND
 
 void loop() {
     const uint32_t current_us = micros();
-    //iwdg_feed();
+    iwdg_feed();
     lora.update();
     led_system.update();
 
@@ -174,7 +174,9 @@ void loop() {
         }
     }
     DO_EVERY(1000) {
-        INFOF("v %5.0f  %ld/%ld", stepper_left.current_velocity, stepper_left.current_step, stepper_left.temp_target_step);
+        INFOF("v %5.0f  %ld/%ld %ld", stepper_left.current_velocity, stepper_left.current_step, stepper_left.temp_target_step, stepper_left.temp_target_step - stepper_left.current_step);
+        // enable?
+        digitalWrite(PIN_MOTOR_ENABLE, HIGH);
     }
 
     return;
@@ -282,7 +284,7 @@ void loop() {
     // emergency stop?
     digitalWrite(PIN_RELAY_MOTOR_POWER, sw_emergency ? LOW : HIGH);
     // enable?
-    digitalWrite(PIN_MOTOR_ENABLE, sw_enable ? LOW : HIGH);
+    digitalWrite(PIN_MOTOR_ENABLE, sw_enable ? HIGH : LOW);
     // 2 spare relays
     digitalWrite(PIN_RELAY_1, sw_relay_1 ? HIGH : LOW);
     digitalWrite(PIN_RELAY_2, sw_relay_2 ? HIGH : LOW);
